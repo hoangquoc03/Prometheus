@@ -1,0 +1,59 @@
+services:
+  ecommerce-api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: ecommerce-api:bai6
+    restart: unless-stopped
+    expose:
+      - "8080"
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/host/rootfs"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/rootfs:ro
+    expose:
+      - "9100"
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - ecommerce-api
+      - node-exporter
+      - alertmanager
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    expose:
+      - "9093"
+
+volumes:
+  prometheus_data:
+  alertmanager_data:

@@ -1,0 +1,35 @@
+groups:
+  - name: system_alerts
+    rules:
+      - alert: HighCPUUsage
+        expr: |
+          100 * (
+            1 - avg by (instance) (
+              rate(node_cpu_seconds_total{job="node-exporter", mode="idle"}[5m])
+            )
+          ) > 90
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: CPU usage is above 90%
+          description: >-
+            CPU usage on {{ $labels.instance }} has remained above 90% for at
+            least 1 minute (current value {{ $value }}%).
+
+      - alert: HighMemoryUsage
+        expr: |
+          100 * (
+            1 -
+            node_memory_MemAvailable_bytes{job="node-exporter"}
+            /
+            node_memory_MemTotal_bytes{job="node-exporter"}
+          ) > 90
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Memory usage is above 90%
+          description: >-
+            Memory usage on {{ $labels.instance }} has remained above 90% for at
+            least 1 minute (current value {{ $value }}%).
