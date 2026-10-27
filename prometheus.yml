@@ -3,10 +3,14 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: "backend"
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  - job_name: "ecommerce-api"
     metrics_path: "/actuator/prometheus"
     static_configs:
-      - targets: ["backend:8080"]
+      - targets: ["ecommerce-api:8080"]
 
   - job_name: "node"
     static_configs:

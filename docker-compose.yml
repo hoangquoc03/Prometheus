@@ -1,19 +1,28 @@
 services:
-  backend:
+  ecommerce-api:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "127.0.0.1:8081:8080"
+    image: ecommerce-api:local
+    restart: unless-stopped
+    expose:
+      - "8080"
 
   prometheus:
     image: prom/prometheus:v3.5.0
+    restart: unless-stopped
     ports:
       - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
     depends_on:
-      - backend
+      - ecommerce-api
+      - node-exporter
 
   node-exporter:
     image: prom/node-exporter:v1.9.1
@@ -28,3 +37,6 @@ services:
       - /:/host/rootfs:ro
     expose:
       - "9100"
+
+volumes:
+  prometheus_data:

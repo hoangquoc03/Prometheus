@@ -24,7 +24,9 @@
         `-- java\com\example\prometheusdemo\PrometheusDemoApplicationTests.java
 ```
 
-Project được tạo mới cho Java 21 (đã có trên máy) và Maven 3.9.11 (đã có trên máy). Spring Boot 3.5.7 quản lý phiên bản tương thích cho Actuator và Micrometer; không khai báo phiên bản riêng cho các dependency đó. Docker Desktop Engine cũng đã phản hồi lệnh `docker version` tại thời điểm kiểm tra môi trường. Cổng host `8080` đang được một container khác sử dụng, nên backend được publish ra host ở `8081`; bên trong Compose, backend vẫn lắng nghe `8080`.
+Project được tạo mới cho Java 21 (đã có trên máy) và Maven 3.9.11 (đã có trên máy). Spring Boot 3.5.7 quản lý phiên bản tương thích cho Actuator và Micrometer; không khai báo phiên bản riêng cho các dependency đó. Docker Desktop Engine cũng đã phản hồi lệnh `docker version` tại thời điểm kiểm tra môi trường. Ở Bài 1–3, backend từng được publish trên `127.0.0.1:8081` do host port `8080` đã được sử dụng; trong cấu hình hiện tại của Bài 4 backend không publish cổng host.
+
+> **Cấu hình hiện tại sau Bài 4:** Docker Compose dùng service `ecommerce-api`, `prometheus` và `node-exporter`; backend chỉ expose `8080` trong network nội bộ, dashboard Prometheus bind tại `127.0.0.1:9090`. Những ví dụ cấu hình/lệnh của Bài 1–3 bên dưới phản ánh các bước trước đó; để chạy stack hiện tại, dùng mục **Bài 4** cuối tài liệu.
 
 ## Phân tích cấu hình và nguyên nhân lỗi
 
@@ -52,11 +54,11 @@ scrape_configs:
       - targets: ["backend:8080"]
 ```
 
-`backend` phải khớp tên service trong `docker-compose.yml`. Hai service cùng nằm trên network mặc định do Compose tạo, nên Prometheus gọi backend bằng DNS service nội bộ; không dùng `localhost:8080`.
+Trong cấu hình lịch sử Bài 1, `backend` khớp tên service khi đó. Cấu hình hiện tại ở mục Bài 4 dùng `ecommerce-api` làm tên service và target. Hai container giao tiếp bằng DNS service trên network mặc định do Compose tạo; không dùng `localhost:8080` trong Prometheus.
 
 ### `docker-compose.yml`
 
-Compose build backend từ `Dockerfile`, publish backend ở `127.0.0.1:8081` và giao diện Prometheus ở `127.0.0.1:9090`, đồng thời mount cấu hình Prometheus chỉ đọc. Cổng trong target `backend:8080` là cổng bên trong mạng Compose; nó không phụ thuộc vào cổng publish trên host.
+Trong cấu hình hiện tại của Bài 4, Compose build app từ `Dockerfile`, chỉ expose backend trong network Compose và bind giao diện Prometheus trên `127.0.0.1:9090`; cấu hình Prometheus được mount read-only. Cổng target `ecommerce-api:8080` là cổng nội bộ; không có publish backend lên host.
 
 ### Backend và dependencies
 
@@ -86,6 +88,49 @@ Invoke-RestMethod 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22node%2
 
 Sau khi cập nhật `prometheus.yml`, hãy đảm bảo Prometheus đã nạp cấu hình mới; nếu target `node` chưa xuất hiện, chạy `docker compose up -d --force-recreate prometheus` rồi kiểm tra lại `/targets`.
 
+## Bài 4: Liên minh Docker Compose – Prometheus + App
+
+Project không có nghiệp vụ E-commerce (không có sản phẩm, giỏ hàng hay đơn hàng). Bài này tái sử dụng Spring Boot sample có Actuator, đặt tên Compose service là `ecommerce-api` để thực hành service discovery/scrape; không giả định có image E-commerce riêng.
+
+Compose hiện build image `ecommerce-api:local` từ Dockerfile hiện có. Service chỉ expose `8080` trên Docker network, không publish backend ra host. Prometheus bind `127.0.0.1:9090`, mount `prometheus.yml` read-only, lưu dữ liệu trong named volume `prometheus_data` và bật `--web.enable-lifecycle`. Job `prometheus`, `ecommerce-api` và `node` dùng Docker DNS trên network mặc định.
+
+```powershell
+Set-Location 'C:\Users\Laptop\Music\Prometheus'
+docker compose config
+docker compose up --build -d
+docker compose ps
+docker compose logs --tail=100 ecommerce-api
+docker compose logs --tail=100 prometheus
+docker compose logs --tail=100 node-exporter
+docker compose exec -T prometheus promtool check config /etc/prometheus/prometheus.yml
+```
+
+Sau khi cập nhật file trên Host, kiểm tra cú pháp trước khi reload. Bind mount `./prometheus.yml:/etc/prometheus/prometheus.yml:ro` giúp container đọc file ngoài image nhưng không tự reload cấu hình. Gọi lifecycle API vì `--web.enable-lifecycle` đã bật; API reload được giới hạn host qua bind `127.0.0.1:9090`:
+
+```powershell
+curl.exe -X POST http://localhost:9090/-/reload
+docker compose logs --tail=50 prometheus
+```
+
+API lifecycle là giao diện quản trị không xác thực mặc định; không đưa cổng 9090 ra Internet. Nếu cần truy cập dashboard từ xa, dùng VPN hoặc SSH tunnel; nếu cần chia sẻ cho nhiều người dùng, đặt sau reverse proxy có xác thực và giới hạn mạng.
+
+Kiểm tra scrape:
+
+```powershell
+Invoke-RestMethod 'http://localhost:9090/api/v1/targets'
+Invoke-RestMethod 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22ecommerce-api%22%7D'
+Invoke-RestMethod 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22node%22%7D'
+```
+
+Mở `http://localhost:9090/targets` và xác nhận các job `ecommerce-api`, `prometheus`, `node` ở trạng thái `UP`. Backend không còn publish cổng host, vì vậy URL `http://localhost:8080/actuator/health` không áp dụng; kiểm tra endpoint nội bộ từ container Prometheus:
+
+```powershell
+docker compose exec -T prometheus wget -qO- http://ecommerce-api:8080/actuator/health
+docker compose exec -T prometheus wget -qO- http://ecommerce-api:8080/actuator/prometheus
+```
+
+`ecommerce-api:8080` phân giải qua DNS Docker Compose. `localhost:8080` bên trong container Prometheus trỏ về chính Prometheus, không phải backend.
+
 ## Chạy bằng PowerShell
 
 Mở PowerShell trong thư mục project:
@@ -97,33 +142,31 @@ docker compose up --build -d
 docker compose ps
 ```
 
-`docker compose config` kiểm tra cấu hình Compose; lệnh đó không thay thế kiểm tra cấu hình Prometheus. Sau khi stack khởi động, kiểm tra backend từ máy host:
+`docker compose config` kiểm tra cấu hình Compose; lệnh đó không thay thế kiểm tra cấu hình Prometheus. Trong cấu hình Bài 4 backend không publish lên host, nên kiểm tra endpoint qua Docker network:
 
 ```powershell
-Invoke-WebRequest -UseBasicParsing http://localhost:8081/actuator/health
-$metrics = Invoke-WebRequest -UseBasicParsing http://localhost:8081/actuator/prometheus
-$metrics.StatusCode
-$metrics.Content | Select-String 'jvm_memory_used_bytes|process_cpu_usage' | Select-Object -First 5
+docker compose exec -T prometheus wget -qO- http://ecommerce-api:8080/actuator/health
+docker compose exec -T prometheus wget -qO- http://ecommerce-api:8080/actuator/prometheus
 ```
 
-Health dự kiến trả HTTP `200` và trạng thái `UP`. Prometheus endpoint dự kiến trả HTTP `200` cùng nội dung metrics dạng văn bản. Việc tìm tên metric trong ví dụ là kiểm tra nhanh; danh sách metrics có thể thay đổi theo phiên bản/runtime.
+Health dự kiến trả trạng thái `UP`. Prometheus endpoint trả metrics dạng văn bản. Việc tìm tên metric phụ thuộc phiên bản/runtime.
 
 Kiểm tra log và cấu hình Prometheus trong container:
 
 ```powershell
-docker compose logs --tail 100 backend prometheus
+docker compose logs --tail 100 ecommerce-api prometheus node-exporter
 docker compose exec prometheus promtool check config /etc/prometheus/prometheus.yml
 ```
 
 Nếu `promtool check config` thành công, công cụ in thông báo `SUCCESS`. Tiếp theo mở:
 
-- `http://localhost:9090/targets` — job `backend` phải có trạng thái `UP`.
-- `http://localhost:9090/graph` — nhập `up{job="backend"}` và bấm Execute; kết quả `1` là scrape thành công, `0` là scrape thất bại.
+- `http://localhost:9090/targets` — các job `ecommerce-api`, `prometheus`, `node` phải có trạng thái `UP`.
+- `http://localhost:9090/graph` — nhập `up{job="ecommerce-api"}`; kết quả `1` là scrape thành công, `0` là scrape thất bại.
 
 Có thể kiểm tra query qua API bằng PowerShell:
 
 ```powershell
-Invoke-RestMethod 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22backend%22%7D'
+Invoke-RestMethod 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22ecommerce-api%22%7D'
 ```
 
 Prometheus scrape theo chu kỳ 15 giây; đợi ít nhất một chu kỳ sau khi hai service sẵn sàng rồi kiểm tra `/targets`.

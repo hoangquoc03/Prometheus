@@ -1,5 +1,7 @@
 # BÁO CÁO BÀI 3: KHÁM SỨC KHỎE MÁY CHỦ VỚI NODE EXPORTER
 
+> Lưu ý cập nhật sau Bài 4: báo cáo này ghi lại cấu hình và service names tại thời điểm thực hiện Bài 3. Compose hiện tại đổi tên service backend thành `ecommerce-api` và Prometheus có các job `prometheus`, `ecommerce-api`, `node`; Node Exporter vẫn được giữ nguyên. Xem [BAO_CAO_BAI_4.md](./BAO_CAO_BAI_4.md) để biết cấu hình đang dùng.
+
 ## 1. Tên bài thực hành
 
 **Bài 3: Vận dụng chuyên sâu – Khám sức khỏe máy chủ với Node Exporter**
