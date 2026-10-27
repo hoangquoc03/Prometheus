@@ -64,6 +64,28 @@ Compose build backend từ `Dockerfile`, publish backend ở `127.0.0.1:8081` v�
 
 `src/main/resources/application.yml` expose `health`, `info` và `prometheus` qua HTTP; các thông tin chi tiết health không được hiển thị. Không expose `env`, không bật hoặc expose `shutdown`, và không mở toàn bộ endpoint bằng `*`. Compose chỉ publish cổng host trên loopback; Prometheus trong Compose vẫn scrape backend qua network nội bộ.
 
+### Node Exporter (Bài 3)
+
+Compose có thêm `node-exporter` (image pin `prom/node-exporter:v1.9.1`). Node Exporter expose cổng `9100` chỉ trên network Compose; không publish `9100` trên host. Prometheus scrape job `node` qua `node-exporter:9100`, endpoint `/metrics` mặc định.
+
+Mount `/proc` và `/sys` vào đường dẫn container chỉ đọc để exporter đọc procfs/sysfs mà Docker daemon cung cấp; mount `/` vào `/host/rootfs` chỉ đọc để collector filesystem quan sát root filesystem. Không dùng propagation `rslave` vì Docker Desktop Engine báo root mount của nó không phải shared/slave. Tùy chọn `--path.procfs`, `--path.sysfs` và `--path.rootfs` chỉ rõ vị trí các cây hệ thống bên trong exporter. Các mount này không đảm bảo mọi thiết bị/phần cứng được thu thập.
+
+Máy phát triển là Windows chạy Docker Desktop Linux containers. Node Exporter Linux trong môi trường này quan sát Linux VM/môi trường Docker mà daemon cung cấp, không tự động đại diện chính xác toàn bộ phần cứng Windows. Muốn giám sát Windows, dùng Windows exporter; muốn giám sát VPS Linux thật, cài Node Exporter trên chính VPS và cấu hình Prometheus truy cập qua mạng riêng/VPN hoặc firewall giới hạn nguồn. Không public cổng `9100` ra Internet.
+
+Kiểm tra job mới sau khi khởi động Compose:
+
+```powershell
+docker compose config
+docker compose up -d
+docker compose logs --tail=100 node-exporter
+docker compose exec -T prometheus promtool check config /etc/prometheus/prometheus.yml
+Start-Sleep -Seconds 20
+Invoke-RestMethod 'http://localhost:9090/api/v1/targets'
+Invoke-RestMethod 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22node%22%7D'
+```
+
+Sau khi cập nhật `prometheus.yml`, hãy đảm bảo Prometheus đã nạp cấu hình mới; nếu target `node` chưa xuất hiện, chạy `docker compose up -d --force-recreate prometheus` rồi kiểm tra lại `/targets`.
+
 ## Chạy bằng PowerShell
 
 Mở PowerShell trong thư mục project:
