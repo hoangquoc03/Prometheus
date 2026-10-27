@@ -19,7 +19,7 @@
 `-- src
     |-- main
     |   |-- java\com\example\prometheusdemo\PrometheusDemoApplication.java
-    |   `-- resources\application.properties
+    |   `-- resources\application.yml
     `-- test
         `-- java\com\example\prometheusdemo\PrometheusDemoApplicationTests.java
 ```
@@ -56,13 +56,13 @@ scrape_configs:
 
 ### `docker-compose.yml`
 
-Compose build backend từ `Dockerfile`, publish backend ở cổng host `8081`, publish giao diện Prometheus ở `9090`, và mount cấu hình Prometheus chỉ đọc. Cổng trong target `backend:8080` là cổng bên trong mạng Compose; nó không phụ thuộc vào cổng publish trên host.
+Compose build backend từ `Dockerfile`, publish backend ở `127.0.0.1:8081` và giao diện Prometheus ở `127.0.0.1:9090`, đồng thời mount cấu hình Prometheus chỉ đọc. Cổng trong target `backend:8080` là cổng bên trong mạng Compose; nó không phụ thuộc vào cổng publish trên host.
 
 ### Backend và dependencies
 
 `pom.xml` sử dụng Java 21, Spring Boot 3.5.7, `spring-boot-starter-actuator`, `spring-boot-starter-web`, và `micrometer-registry-prometheus`. Phiên bản dependency được Spring Boot parent quản lý.
 
-`src/main/resources/application.properties` expose duy nhất `health` và `prometheus` qua HTTP; các thông tin chi tiết health không được hiển thị. Không bật các endpoint quản trị khác.
+`src/main/resources/application.yml` expose `health`, `info` và `prometheus` qua HTTP; các thông tin chi tiết health không được hiển thị. Không expose `env`, không bật hoặc expose `shutdown`, và không mở toàn bộ endpoint bằng `*`. Compose chỉ publish cổng host trên loopback; Prometheus trong Compose vẫn scrape backend qua network nội bộ.
 
 ## Chạy bằng PowerShell
 
@@ -78,8 +78,8 @@ docker compose ps
 `docker compose config` kiểm tra cấu hình Compose; lệnh đó không thay thế kiểm tra cấu hình Prometheus. Sau khi stack khởi động, kiểm tra backend từ máy host:
 
 ```powershell
-Invoke-WebRequest http://localhost:8081/actuator/health
-$metrics = Invoke-WebRequest http://localhost:8081/actuator/prometheus
+Invoke-WebRequest -UseBasicParsing http://localhost:8081/actuator/health
+$metrics = Invoke-WebRequest -UseBasicParsing http://localhost:8081/actuator/prometheus
 $metrics.StatusCode
 $metrics.Content | Select-String 'jvm_memory_used_bytes|process_cpu_usage' | Select-Object -First 5
 ```
